@@ -1,0 +1,212 @@
+---
+title: "Austin Animal Shelter Dog Statistics"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: journal
+    
+---
+
+```{r}
+library("tidyverse")
+library("janitor")
+library("lubridate")
+library("stringr")
+library("flexdashboard")
+library("kableExtra")
+
+intakes <- read_csv("austin-animal-center-intakes-1.csv")
+outcomes <- read_csv("austin-animal-center-outcomes-1.csv")
+
+
+```
+
+```{r}
+dog_intakes <- intakes %>%
+  filter(`Animal Type` == "Dog") %>%
+  select(`Animal ID`, DateTimeIntake = DateTime, `Intake Type`, `Intake Condition`, Breed, `Found Location`) %>%
+  clean_names() %>%
+  separate(date_time_intake, into = c("intake_date"), sep = " ", remove = FALSE) %>%  #creating date column
+  mutate(intake_date = as.Date(intake_date, format = "%m / %d / %Y"))
+
+dog_outcomes <- outcomes %>%
+  filter(`Animal Type` == "Dog") %>%
+  select(`Animal ID`, DateTimeOutcome = DateTime, `Outcome Type`, `Outcome Subtype`, Breed) %>%
+  clean_names() %>%
+  separate(date_time_outcome, into = c("outcome_date"), sep = " ", remove = FALSE) %>%  #creating date column
+  mutate(outcome_date = as.Date(outcome_date, format = "%m / %d / %Y"))
+
+breed_stats <- dog_outcomes %>%
+  group_by(breed) %>%
+  count(outcome_type) %>%
+  filter(outcome_type == "Adoption" | outcome_type == "Euthanasia") 
+
+adopted <- breed_stats %>%
+  filter(outcome_type == "Adoption") %>% 
+  arrange(desc(n)) #%>%
+
+euthanasized <- breed_stats %>%
+  filter(outcome_type == "Euthanasia") %>%
+  arrange(desc(n)) #%>%
+ 
+total_breed <- dog_outcomes %>%
+  group_by(breed) %>%
+  count(breed) %>%
+  filter(n > 100)
+
+intake_per_quarter <- dog_intakes %>%
+  mutate(date = round_date(intake_date, unit = "month"), date_quarter = quarter(date, with_year = TRUE)) %>%
+  filter(date_quarter != 2013.4, date_quarter != 2019.1, date_quarter != 2019.2, date_quarter != 2019.3) %>%
+  group_by(date_quarter) %>%
+  count(date_quarter) %>%
+  mutate(Quarter = str_sub(date_quarter, -1)) 
+
+outcome_per_quarter <- dog_outcomes %>%
+  mutate(date = round_date(outcome_date, unit = "month"), date_quarter = quarter(date, with_year = TRUE)) %>%
+  filter(date_quarter != 2013.4, date_quarter != 2019.1, date_quarter != 2019.2, date_quarter != 2019.3) %>%
+  filter(outcome_type == "Adoption" | outcome_type == "Return to Owner") %>%
+  group_by(date_quarter) %>%
+  count(date_quarter) %>%
+  mutate(Quarter = str_sub(date_quarter, -1)) 
+
+quarter_results <- intake_per_quarter %>%
+  full_join(outcome_per_quarter, by = "date_quarter") %>%
+  mutate(quarter_proportion = n.y / n.x) %>%
+  mutate(quarter_percent = quarter_proportion*100)
+
+euthanasia_per_quarter <- dog_outcomes %>%
+  mutate(date = round_date(outcome_date, unit = "month"), date_quarter = quarter(date, with_year = TRUE)) %>%
+  filter(date_quarter != 2013.4, date_quarter != 2019.1, date_quarter != 2019.2, date_quarter != 2019.3) %>%
+  filter(outcome_type == "Euthanasia") %>%
+  group_by(date_quarter) %>%
+  count(date_quarter) %>%
+  mutate(Quarter = str_sub(date_quarter, -1)) 
+
+euthanasia_quarter_results <- euthanasia_per_quarter %>%
+  full_join(intake_per_quarter, by = "date_quarter") %>%
+  mutate(quarter_proportion = n.x / n.y) %>%
+  mutate(quarter_percent = quarter_proportion*100)
+```
+
+
+Overview
+=====================================  
+    
+Column {data-width=600}
+-------------------------------------
+    
+### Proportion of Dogs Who Enter the Shelter and are Placed in Homes
+    
+```{r}
+ggplot(quarter_results) +
+  geom_col(aes(date_quarter, quarter_percent, fill = Quarter.x)) +
+  scale_fill_brewer(palette = "RdBu", labels = c("Jan-Mar", "Apr-Jun", "Jul-Sep", "Oct-Dec")) +
+  labs(title = "Percent of Dogs Who Enter Homes", 
+       x = "Year",
+       y = "Percent of Dogs",
+       fill = "Quarter",
+       caption = "Source: Austin Animal Shelter") +
+  theme(plot.title = element_text(face = "bold", hjust = .55),
+        panel.background = element_blank())
+
+```
+   
+Column {data-width=400}
+-------------------------------------
+   
+### Dog Intake Type Trends
+
+```{r}
+dog_intakes %>%
+  mutate(date = round_date(intake_date, unit = "month")) %>%  #need outcome type for year and month.  
+  group_by(date) %>%
+  count(intake_type) %>%
+  ggplot(aes(date, n, color = intake_type)) +
+  geom_line() +
+  scale_color_brewer(palette = "RdBu") +
+  labs(title = "Intake Type Totals Over Time", 
+       subtitle = "From Oct 2013 To Aug 2019", 
+       x = "Month", 
+       y = "Number of Dogs", 
+       color = "Intake Type",
+       caption = "Source: Austin Animal Shelter")  +
+  theme(plot.title = element_text(face = "bold", hjust = .55), 
+        plot.subtitle = element_text(hjust = .55), 
+        panel.background = element_blank()) 
+```   
+ 
+### Dog Outcome Type Trends
+    
+```{r}
+dog_outcomes %>%
+  mutate(date = round_date(outcome_date, unit = "month")) %>%  #need outcome date for year and month
+  group_by(date) %>%
+  count(outcome_type) %>%
+  ggplot(aes(date, n, color = outcome_type)) +
+  geom_line() +
+  scale_color_brewer(palette = "RdBu") +
+  labs(title = "Outcome Type Totals Over Time", 
+       subtitle = "From Oct 2013 To Aug 2019", 
+       x = "Month", 
+       y = "Number of Dogs", 
+       color = "Outcome Type",
+       caption = "Source: Austin Animal Shelter")  +
+  theme(plot.title = element_text(face = "bold", hjust = .55), 
+        plot.subtitle = element_text(hjust = .55), 
+        panel.background = element_blank()) 
+```
+
+Euthanasia
+=====================================     
+   
+Column {data-width=600}
+-------------------------------------
+
+### Proportion of Dogs Who Enter the Shelter and are Euthanasized
+
+```{r}
+ggplot(euthanasia_quarter_results) +
+  geom_col(aes(date_quarter, quarter_percent, fill = Quarter.x)) +
+  scale_fill_brewer(palette = "RdBu", labels = c("Jan-Mar", "Apr-Jun", "Jul-Sep", "Oct-Dec")) +
+  labs(title = "Percent of Dogs Who are Euthanasized", 
+       x = "Year",
+       y = "Percent of Dogs",
+       fill = "Quarter",
+       caption = "Source: Austin Animal Shelter") +
+  theme(plot.title = element_text(face = "bold", hjust = .55),
+        panel.background = element_blank())
+```
+
+Column {data-width=400}
+-------------------------------------
+   
+### Reasons for Euthanasia Over 5 Years
+
+```{r}
+dog_outcomes %>%
+  filter(outcome_type == "Euthanasia") %>%
+  group_by(outcome_subtype) %>%
+  ggplot(aes(fct_infreq(outcome_subtype))) +
+  geom_bar(fill = "lightsalmon1", width = 0.5) +
+  labs(title = "Amount of Dogs Euthanasized", 
+       x = "Reason for Euthanasia", 
+       y = "Number of Dogs",
+       caption = "Source: Austin Animal Shelter") +
+  theme(panel.background = element_blank(), plot.title = element_text(face = "bold", hjust = .55))
+```   
+    
+### Breeds of Dogs With Highest Percentage of Euthanasia
+
+```{r}
+outcome_proportions <- adopted %>%
+  full_join(euthanasized, by = "breed") %>%
+  inner_join(total_breed, by = "breed") %>%
+  mutate(adopted_proportion = n.x / n, euthanasia_percent = (n.y / n)*100) %>%
+  filter(n > 100) %>%
+  select("Dog Breed" = breed, "Total Euthanized" = n.y, "Breed Total" = n, "Percent Euthanized" = euthanasia_percent) %>%
+  arrange(desc(`Percent Euthanized`)) %>%
+  head(6L)
+outcome_proportions %>%
+  kbl() %>%
+  kable_paper("hover", full_width = F)
+```
+
