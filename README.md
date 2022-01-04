@@ -1,2 +1,2 @@
 # Austin Animal Shelter Dog Statistics
-https://rpubs.com/cs8445/766157
+This project consists of two datasets: Intake and Outcome of animals at the Austin Shelter. For the purpose of this analysis we will only be looking at dogs. I cleaned and combined the data into a workable form. I then searched for trends in animal outcome given breed and time of year. I then put the data into graphs and charts that could be understood by someone without a data background. The final result of this analysis can be found at https://rpubs.com/cs8445/766157.
